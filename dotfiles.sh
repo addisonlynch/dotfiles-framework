@@ -23,6 +23,7 @@ DOTFILES_DIR="${PWD}"
 TARGET=~
 CHECK_WGET_TYPE_AND_ENCODING='no'
 IGNORE_TIMER='no'
+INCLUDE_SUBMODULES='no'
 
 #####
 # External utilities
@@ -194,6 +195,22 @@ function git_fetch()
 	fi
 }
 
+function fetch_submodules()
+{
+	REPO=$(nonempty_option 'fetch_submodules' 'REPO' "${1}") || return 1
+	REMOTES=$(cd "${REPO}" && "${GIT}" remote) || return 1
+	if [ -n "${REMOTES}" ]; then
+		cd "${REPO}"
+		# Initialize any submodules which were added since initial clone
+		"${GIT}" submodule init || return 1
+		# Update all submodules
+		"${GIT}" submodule update --recursive --remote || return 1
+		cd ..
+	else
+		echo "no remote repositories found for ${REPO}"
+	fi
+}
+
 function wget_fetch()
 {
 	REPO=$(nonempty_option 'wget_fetch' 'REPO' "${1}") || return 1
@@ -319,7 +336,7 @@ function clone()
 		'git')
 			CACHE_SOURCE='no'
 			FETCH='no'
-			"${GIT}" clone "${URL}" "${REPO}" || return 1
+			"${GIT}" clone --recurse-submodules "${URL}" "${REPO}" || return 1
 			;;
 		'wget')
 			mkdir -p "${REPO}"
@@ -777,6 +794,9 @@ function update()
 				'--ignore-timer')
 					IGNORE_TIMER='yes'
 					;;
+				'--include-submodules')
+					INCLUDE_SUBMODULES='yes'
+					;;
 				*)
 					LINK_OPTS="${LINK_FN_OPTS} ${1}"
 		esac
@@ -795,6 +815,11 @@ function update()
 		"${RM}" -f "${REPO}"/updated.* || return 1
 		"${TOUCH}" "${UPDATE_FILE}" || return 1
 		fetch "${REPO}" || return 1
+
+		# fetch submodules if desired
+		if [ "${INCLUDE_SUBMODULES}" = 'yes' ]; then
+			fetch_submodules "${REPO}" || return 1
+		fi
 		patch "${REPO}" || return 1
 		link ${LINK_OPTS} "${REPO}" || return 1
 		echo "${REPO} dotfiles updated"
